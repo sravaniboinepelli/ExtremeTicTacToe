@@ -11,7 +11,8 @@ class Team44():
         self.big_board_win_pos = [[0, 1, 2], [3, 4, 5], [6, 7, 8]]
         self.small_board_win_pos = [[0, 1, 2]]
         self.score_table = {'2inrow': 10, '3inrow': 100, '1inrow': 1,
-                            'block2inrow': 5, 'block1inrow': 5}
+                            'block2inrow': 5, 'block1inrow': 5,
+                            'corner': 4, 'centre': 3, 'edge': 6}
         self.inf = 100000000
         self.good_moves = []
         self.big_board_lineup_pos = []
@@ -21,9 +22,9 @@ class Team44():
 
 
     @classmethod
-    def get_block_cords(cls, old_move):
-        """Get Block and cell coordinates given the move
-             co ordinates of the form boardno, row, col"""
+    def get_block_coords(cls, old_move):
+        """ Get Block and cell coordinates given the move
+             co ordinates of the form boardno, row, col """
 
         block_x = old_move[1] / 3
         cell_x = old_move[1] % 3
@@ -32,11 +33,27 @@ class Team44():
         # print("blockx:", block_x, "blocky:", block_y, "cellx:", cell_x, "celly:", cell_y, )
         return (old_move[0], block_x, cell_x, block_y, cell_y)
 
+    @classmethod
+    def get_block_score(cls, old_move):
+        """ get weightage of block on board given the
+            block coordinates """
+        
+        block_coords = Team44.get_block_coords(old_move)
+        block_x = block_coords[1]
+        block_y = block_coords[3]
+        
+        block_score = 'corner'
+        if ((block_x * block_y) % 2 != 0):
+            block_score = 'centre'
+        if ((block_x + block_y) % 2 != 0):
+            block_score = 'edge'
+        return block_score
 
     def evaluate(self, lineup_pos, flag, bstatus):
         """ check the row, col, diagonal set in lineup_pos
-             for xxx, xx-, x-, ooo, oo-, o--, etc patterns and assign weights to decide
-             hueristic. Used in both Block and bigboard level hueristic derivation"""
+            for xxx, xx-, x-, ooo, oo-, o--, etc patterns and assign weights to decide
+            hueristic. Used in both Block and bigboard level hueristic derivation"""
+        
         value = 0
         glaf = 'x' if flag == 'o' else 'o'
         # evaluate win positions
@@ -83,7 +100,7 @@ class Team44():
             elif p == '-' and q == '-'  and r == glaf:
                 value -= self.score_table["1inrow"]
 
-            #  block1 by opponent
+            #  2 of self in row, 1 of opponent
             elif p == flag and q == flag and r == glaf:
                 value += self.score_table["block1inrow"]
             elif p == flag and q == glaf  and r == flag:
@@ -91,7 +108,7 @@ class Team44():
             elif p == glaf  and q == flag and r == flag:
                 value += self.score_table["block1inrow"]
 
-                # 2 of opponent in row, one block
+            # 2 of opponent in row, 1 of self
             elif p == glaf and q == glaf and r == flag:
                 value -= self.score_table["block1inrow"]
             elif p == glaf and q == flag and r == glaf:
@@ -99,13 +116,13 @@ class Team44():
             elif p == flag and q == glaf and r == glaf:
                 value -= self.score_table["block1inrow"]
 
-            # 1 of self in row, two opponent
+            # 1 of self in row, 2 of opponent
             elif p == flag and q == glaf and r == glaf:
                 value += self.score_table["block2inrow"]
             elif p == glaf and q == glaf  and r == flag:
                 value += self.score_table["block2inrow"]
 
-            # 1 of opponent in row, two of us
+            # 1 of opponent in row, 2 of self
             elif p == glaf and q == flag and r == flag:
                 value -= self.score_table["block2inrow"]
             elif p == flag and q == flag  and r == glaf:
@@ -117,6 +134,7 @@ class Team44():
     def hfunc_block(self, bstatus, flag, block_coords, lineup_pos, win_pos):
         """ given the bigboard get the current moves block and possible
             row, colunm and diagonals associated with that block """
+        
         for pos in win_pos:
             # print("pos:", pos)
             # print(block_coords[1], block_coords[3])
@@ -157,6 +175,7 @@ class Team44():
     def hfunc_small_board(self, bstatus, flag, block_coords, lineup_pos, win_pos):
         """ given the smallboard status use block coords as cell coords and derive possible
             row, colunm and diagonals associated with that smallboard """
+        
         for pos in win_pos:
             # print(pos)
             ax = block_coords[1]
@@ -172,9 +191,9 @@ class Team44():
 
         return self.evaluate(lineup_pos, flag, bstatus)
 
-
     def hfunc2(self, flag, block_coords, bstatus, bstatuss):
         """ combine block, cell heuristic of the big board """
+        
         value = 0
         self.big_board_lineup_pos = []
         value = self.hfunc_block(bstatus, flag, block_coords,
@@ -198,7 +217,10 @@ class Team44():
 
     def hfunc_over_all(self, board, flag, old_move):
         """ combine heuristic of the  2 big boards """
-        block_coords = Team44.get_block_cords(old_move)
+        
+        block_coords = Team44.get_block_coords(old_move)
+        block_type = Team44.get_block_score(old_move)
+        block_score = self.score_table[block_type]
         bstatus = board.big_boards_status[0]
         bstatuss = board.small_boards_status[0]
         bstatus1 = board.big_boards_status[1]
@@ -206,12 +228,13 @@ class Team44():
         heuristic1 = self.hfunc2(flag, block_coords, bstatus, bstatuss)
         heuristic2 = self.hfunc2(flag, block_coords, bstatus1, bstatuss1)
         heuristic = heuristic1**3 + heuristic2**3
+        heuristic = heuristic * block_score
         # print("heuristic:", heuristic1, heuristic2, heuristic)
         return heuristic
 
-
     def negamax(self, board, alpha, beta, color, old_move, depth, flag):
         """ negamax search to obtain best possible move """
+        
         available_moves = board.find_valid_move_cells(old_move)
         temp_board = copy.deepcopy(board)
 
